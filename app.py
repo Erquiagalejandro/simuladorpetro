@@ -22,6 +22,28 @@ if 'minerales' not in st.session_state:
 if 'semilla_roca' not in st.session_state:
     st.session_state.semilla_roca = 42
 
+# --- FUNCIONES CALLBACK (SE EJECUTAN ANTES DE RENDERIZAR WIDGETS) ---
+def aleatorizar_callback():
+    st.session_state.semilla_roca = np.random.randint(1, 99999)
+    num_m = len(st.session_state.minerales)
+    if num_m > 0:
+        rand_vals = np.random.uniform(5, 40, size=num_m)
+        target_total = np.random.uniform(65, 90)  # Deja entre 10% y 35% de matriz/bálsamo
+        scaled_vals = (rand_vals / np.sum(rand_vals)) * target_total
+        
+        for idx, m in enumerate(st.session_state.minerales):
+            nuevo_pct = float(np.round(scaled_vals[idx], 1))
+            m['pct'] = nuevo_pct
+            st.session_state[f"pct_{idx}"] = nuevo_pct
+
+def normalizar_callback():
+    suma_t = sum(m['pct'] for m in st.session_state.minerales)
+    if suma_t > 0:
+        for idx, m in enumerate(st.session_state.minerales):
+            nuevo_v = float(np.round((m['pct'] / suma_t) * 100.0, 1))
+            m['pct'] = nuevo_v
+            st.session_state[f"pct_{idx}"] = nuevo_v
+
 # --- PANEL LATERAL ---
 st.sidebar.header("⚙️ Textura y Granulometría")
 textura_global = st.sidebar.selectbox("Textura Fabric", ["Equigranular", "Inequigranular (Porfírica)"])
@@ -38,13 +60,18 @@ if st.sidebar.button("+ Agregar Mineral"):
     st.session_state.minerales.append(
         {"nombre": f"Mineral {len(st.session_state.minerales)+1}", "pct": 5.0, "habito": "Prismático (3.5:1)", "color": "#444444"}
     )
+    st.rerun()
 
 indices_a_eliminar = []
 
 for idx, min_item in enumerate(st.session_state.minerales):
     with st.sidebar.expander(f"🔹 {min_item['nombre']}", expanded=False):
         min_item['nombre'] = st.text_input("Nombre", min_item['nombre'], key=f"nom_{idx}")
-        min_item['pct'] = st.slider("Porcentaje (%)", 0.0, 100.0, float(min_item['pct']), step=1.0, key=f"pct_{idx}")
+        
+        # El slider lee directamente su key de session_state
+        val_slider = st.slider("Porcentaje (%)", 0.0, 100.0, float(min_item['pct']), step=1.0, key=f"pct_{idx}")
+        min_item['pct'] = val_slider
+
         min_item['habito'] = st.selectbox(
             "Hábito Cristalino", 
             ["Prismático (3.5:1)", "Tabular (2:1)", "Equidimensional (1:1)", "Anhedral / Intersticial"],
@@ -56,11 +83,16 @@ for idx, min_item in enumerate(st.session_state.minerales):
         if st.button("Eliminar Mineral", key=f"del_{idx}"):
             indices_a_eliminar.append(idx)
 
-for idx in reversed(indices_a_eliminar):
-    st.session_state.minerales.pop(idx)
+if indices_a_eliminar:
+    for idx in reversed(indices_a_eliminar):
+        st.session_state.minerales.pop(idx)
+        for key_p in ["pct_", "nom_", "hab_", "col_", "del_"]:
+            k = f"{key_p}{idx}"
+            if k in st.session_state:
+                del st.session_state[k]
     st.rerun()
 
-# --- BALANCE Y AUTONORMALIZACIÓN DE PORCENTAJES ---
+# --- BALANCE DE PORCENTAJES Y BOTONES CON CALLBACK ---
 suma_total = sum(m['pct'] for m in st.session_state.minerales)
 restante = 100.0 - suma_total
 
@@ -75,30 +107,8 @@ else:
     col_b2.metric(nombre_fondo, "0%", delta=f"{restante:.0f}%", delta_color="inverse")
     st.sidebar.error(f"⚠️ Te pasaste por {abs(restante):.0f}%. El programa recortará los últimos minerales.")
 
-if st.sidebar.button("⚖️ Normalizar proporcionalmente a 100%"):
-    if suma_total > 0:
-        for idx, m in enumerate(st.session_state.minerales):
-            nuevo_v = round((m['pct'] / suma_total) * 100.0, 1)
-            m['pct'] = nuevo_v
-            st.session_state[f"pct_{idx}"] = nuevo_v
-        st.rerun()
-
-st.sidebar.markdown("---")
-
-# --- BOTÓN DE ALEATORIZACIÓN COMPLETA DE PORCENTAJES ---
-if st.sidebar.button("🎲 Aleatorizar Porcentajes y Muestra"):
-    st.session_state.semilla_roca = np.random.randint(1, 99999)
-    num_m = len(st.session_state.minerales)
-    if num_m > 0:
-        rand_vals = np.random.uniform(5, 40, size=num_m)
-        target_total = np.random.uniform(65, 90)  # Deja entre 10% y 35% de matriz/bálsamo
-        scaled_vals = (rand_vals / np.sum(rand_vals)) * target_total
-        
-        for idx, m in enumerate(st.session_state.minerales):
-            nuevo_pct = float(np.round(scaled_vals[idx], 1))
-            m['pct'] = nuevo_pct
-            st.session_state[f"pct_{idx}"] = nuevo_pct
-    st.rerun()
+st.sidebar.button("⚖️ Normalizar proporcionalmente a 100%", on_click=normalizar_callback)
+st.sidebar.button("🎲 Aleatorizar Porcentajes y Muestra", on_click=aleatorizar_callback)
 
 # --- GENERACIÓN DE LA SECCIÓN DELGADA COMPLETA ---
 np.random.seed(st.session_state.semilla_roca)

@@ -8,7 +8,7 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="Simulador Petrográfico Táctil", layout="wide")
 
 st.title("🔬 Simulador Petrográfico de Sección Delgada")
-st.write("Ajustá textura, granulometría y minerales. **Arrastrá con el dedo sobre el ocular** para recorrer la platina.")
+st.write("Ajustá textura, distribución y minerales. **Arrastrá con el dedo sobre el ocular** para recorrer la platina.")
 
 # --- INICIALIZACIÓN DE ESTADO ---
 if 'minerales' not in st.session_state:
@@ -24,7 +24,8 @@ if 'semilla_roca' not in st.session_state:
 
 # --- PANEL LATERAL ---
 st.sidebar.header("⚙️ Textura y Granulometría")
-textura_global = st.sidebar.selectbox("Textura", ["Equigranular", "Inequigranular (Porfírica)"])
+textura_global = st.sidebar.selectbox("Textura Fabric", ["Equigranular", "Inequigranular (Porfírica)"])
+distribucion_global = st.sidebar.selectbox("Distribución Espacial", ["Cúmulos Naturales (Media)", "Alta Segregación / Bandada", "Homogénea (Dispersa)"])
 granulometria_global = st.sidebar.selectbox("Granulometría Dominante", ["Muy Fino", "Fino", "Medio", "Grueso"], index=1)
 
 nombre_fondo = "Matriz" if textura_global == "Inequigranular (Porfírica)" else "Bálsamo de platina"
@@ -115,13 +116,41 @@ for i, min_item in enumerate(st.session_state.minerales, start=1):
     px_target = (pct_target / 100.0) * (tam_muestra ** 2)
     px_acum = 0
     intentos = 0
-    max_intentos = 4000
+    max_intentos = 4500
 
     aspect_w, aspect_h, tipo_f = dict_habito[min_item['habito']]
 
+    # Generar centros de agrupamiento (clusters) para heterogeneidad
+    if distribucion_global == "Homogénea (Dispersa)":
+        prob_cluster = 0.0
+        n_clusters = 1
+        sigma_cluster = 200
+    elif distribucion_global == "Cúmulos Naturales (Media)":
+        prob_cluster = 0.70
+        n_clusters = np.random.randint(1, 3)
+        sigma_cluster = np.random.uniform(90, 160)
+    else: # Alta Segregación / Bandada
+        prob_cluster = 0.88
+        n_clusters = np.random.randint(1, 2)
+        sigma_cluster = np.random.uniform(50, 100)
+
+    cluster_centers = [
+        (np.random.randint(80, tam_muestra-80), np.random.randint(80, tam_muestra-80))
+        for _ in range(n_clusters)
+    ]
+
     while px_acum < px_target and intentos < max_intentos:
         intentos += 1
-        cx, cy = np.random.randint(30, tam_muestra-30), np.random.randint(30, tam_muestra-30)
+
+        # Muestreo espacial según heterogeneidad
+        if np.random.rand() < prob_cluster:
+            c_center = cluster_centers[np.random.randint(0, n_clusters)]
+            cx = int(np.random.normal(c_center[0], sigma_cluster))
+            cy = int(np.random.normal(c_center[1], sigma_cluster))
+            cx = np.clip(cx, 30, tam_muestra - 30)
+            cy = np.clip(cy, 30, tam_muestra - 30)
+        else:
+            cx, cy = np.random.randint(30, tam_muestra-30), np.random.randint(30, tam_muestra-30)
 
         if textura_global == "Equigranular":
             factor_tam = np.random.uniform(0.8, 1.2)
@@ -249,7 +278,7 @@ with col_visor:
     components.html(html_code, height=480)
 
 with col_info:
-    st.subheader("📊 Composición Modal Real")
+    st.subheader("📊 Composición Modal Real (Toda la Lámina)")
     modo_ciego = st.checkbox("Ocultar leyenda (Modo Entrenamiento / Desafío)")
     
     if not modo_ciego:

@@ -26,7 +26,9 @@ if 'semilla_roca' not in st.session_state:
 st.sidebar.header("⚙️ Textura y Granulometría")
 textura_global = st.sidebar.selectbox("Textura", ["Equigranular", "Inequigranular (Porfírica)"])
 granulometria_global = st.sidebar.selectbox("Granulometría Dominante", ["Muy Fino", "Fino", "Medio", "Grueso"], index=1)
-color_matriz_hex = st.sidebar.color_picker("Color de Matriz / Pasta de fondo", "#FFFFFF")
+
+nombre_fondo = "Matriz" if textura_global == "Inequigranular (Porfírica)" else "Bálsamo de platina"
+color_matriz_hex = st.sidebar.color_picker(f"Color de {nombre_fondo}", "#FFFFFF")
 
 st.sidebar.markdown("---")
 st.sidebar.header("💎 Paragénesis Mineral")
@@ -41,7 +43,7 @@ indices_a_eliminar = []
 for idx, min_item in enumerate(st.session_state.minerales):
     with st.sidebar.expander(f"🔹 {min_item['nombre']}", expanded=False):
         min_item['nombre'] = st.text_input("Nombre", min_item['nombre'], key=f"nom_{idx}")
-        min_item['pct'] = st.slider("Porcentaje (%)", 0.0, 60.0, float(min_item['pct']), step=1.0, key=f"pct_{idx}")
+        min_item['pct'] = st.slider("Porcentaje (%)", 0.0, 100.0, float(min_item['pct']), step=1.0, key=f"pct_{idx}")
         min_item['habito'] = st.selectbox(
             "Hábito Cristalino", 
             ["Prismático (3.5:1)", "Tabular (2:1)", "Equidimensional (1:1)", "Anhedral / Intersticial"],
@@ -57,6 +59,27 @@ for idx in reversed(indices_a_eliminar):
     st.session_state.minerales.pop(idx)
     st.rerun()
 
+# --- BALANCE Y AUTONORMALIZACIÓN DE PORCENTAJES ---
+suma_total = sum(m['pct'] for m in st.session_state.minerales)
+restante = 100.0 - suma_total
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("📐 Balance de Porcentajes")
+col_b1, col_b2 = st.sidebar.columns(2)
+col_b1.metric("Minerales", f"{suma_total:.0f}%")
+
+if restante >= 0:
+    col_b2.metric(nombre_fondo, f"{restante:.0f}%")
+else:
+    col_b2.metric(nombre_fondo, "0%", delta=f"{restante:.0f}%", delta_color="inverse")
+    st.sidebar.error(f"⚠️ Te pasaste por {abs(restante):.0f}%. El programa recortará los últimos minerales.")
+
+if st.sidebar.button("⚖️ Normalizar proporcionalmente a 100%"):
+    if suma_total > 0:
+        for m in st.session_state.minerales:
+            m['pct'] = round((m['pct'] / suma_total) * 100.0, 1)
+        st.rerun()
+
 st.sidebar.markdown("---")
 if st.sidebar.button("🎲 Regenerar Muestra Aleatoria"):
     st.session_state.semilla_roca = np.random.randint(1, 99999)
@@ -67,7 +90,6 @@ tam_muestra = 800
 y_m, x_m = np.ogrid[0:tam_muestra, 0:tam_muestra]
 matriz_completa = np.zeros((tam_muestra, tam_muestra), dtype=int)
 
-# Escala de granos corregida (mucho más fina y realista)
 escala_grano = {"Muy Fino": 10, "Fino": 18, "Medio": 32, "Grueso": 55}[granulometria_global]
 
 dict_habito = {
@@ -77,7 +99,6 @@ dict_habito = {
     "Anhedral / Intersticial": (1.2, 1.2, 'oval')
 }
 
-# Color ID 0: Matriz / Pasta
 hex_mat = color_matriz_hex.lstrip('#')
 rgb_matriz = [int(hex_mat[j:j+2], 16) for j in (0, 2, 4)]
 colores_rgb = [rgb_matriz]
@@ -102,13 +123,12 @@ for i, min_item in enumerate(st.session_state.minerales, start=1):
         intentos += 1
         cx, cy = np.random.randint(30, tam_muestra-30), np.random.randint(30, tam_muestra-30)
 
-        # Manejo de Textura Equigranular vs Inequigranular
         if textura_global == "Equigranular":
             factor_tam = np.random.uniform(0.8, 1.2)
         else: # Inequigranular (Porfírica)
-            if np.random.rand() < 0.15:  # 15% de Fenocristales
+            if np.random.rand() < 0.15:
                 factor_tam = np.random.uniform(2.2, 3.8)
-            else:  # 85% Microcristales de la matriz
+            else:
                 factor_tam = np.random.uniform(0.4, 0.8)
 
         w = escala_grano * factor_tam * aspect_w
@@ -128,7 +148,6 @@ for i, min_item in enumerate(st.session_state.minerales, start=1):
             matriz_completa[nuevos_px] = i
             px_acum += np.sum(nuevos_px)
 
-# Renderizado RGB en memoria
 img_rgb = np.zeros((tam_muestra, tam_muestra, 3), dtype=np.uint8)
 for id_m, color in enumerate(colores_rgb):
     img_rgb[matriz_completa == id_m] = color
@@ -182,7 +201,6 @@ with col_visor:
 
             ctx.drawImage(img, imgX, imgY, img.width * scale, img.height * scale);
 
-            // Retículo / Cruz filar
             ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
             ctx.lineWidth = 1;
             ctx.beginPath();
@@ -243,4 +261,4 @@ with col_info:
                 st.write(f"**{min_item['nombre']}**: `{pct_m:.1f}%`")
                 
             px_pasta = np.sum(matriz_completa == 0)
-            st.write(f"**Matriz / Pasta de Roca**: `{(px_pasta/total_area)*100:.1f}%`")
+            st.write(f"**{nombre_fondo}**: `{(px_pasta/total_area)*100:.1f}%`")

@@ -77,13 +77,28 @@ else:
 
 if st.sidebar.button("⚖️ Normalizar proporcionalmente a 100%"):
     if suma_total > 0:
-        for m in st.session_state.minerales:
-            m['pct'] = round((m['pct'] / suma_total) * 100.0, 1)
+        for idx, m in enumerate(st.session_state.minerales):
+            nuevo_v = round((m['pct'] / suma_total) * 100.0, 1)
+            m['pct'] = nuevo_v
+            st.session_state[f"pct_{idx}"] = nuevo_v
         st.rerun()
 
 st.sidebar.markdown("---")
-if st.sidebar.button("🎲 Regenerar Muestra Aleatoria"):
+
+# --- BOTÓN DE ALEATORIZACIÓN COMPLETA DE PORCENTAJES ---
+if st.sidebar.button("🎲 Aleatorizar Porcentajes y Muestra"):
     st.session_state.semilla_roca = np.random.randint(1, 99999)
+    num_m = len(st.session_state.minerales)
+    if num_m > 0:
+        rand_vals = np.random.uniform(5, 40, size=num_m)
+        target_total = np.random.uniform(65, 90)  # Deja entre 10% y 35% de matriz/bálsamo
+        scaled_vals = (rand_vals / np.sum(rand_vals)) * target_total
+        
+        for idx, m in enumerate(st.session_state.minerales):
+            nuevo_pct = float(np.round(scaled_vals[idx], 1))
+            m['pct'] = nuevo_pct
+            st.session_state[f"pct_{idx}"] = nuevo_pct
+    st.rerun()
 
 # --- GENERACIÓN DE LA SECCIÓN DELGADA COMPLETA ---
 np.random.seed(st.session_state.semilla_roca)
@@ -120,7 +135,6 @@ for i, min_item in enumerate(st.session_state.minerales, start=1):
 
     aspect_w, aspect_h, tipo_f = dict_habito[min_item['habito']]
 
-    # Generar centros de agrupamiento (clusters) para heterogeneidad
     if distribucion_global == "Homogénea (Dispersa)":
         prob_cluster = 0.0
         n_clusters = 1
@@ -129,7 +143,7 @@ for i, min_item in enumerate(st.session_state.minerales, start=1):
         prob_cluster = 0.70
         n_clusters = np.random.randint(1, 3)
         sigma_cluster = np.random.uniform(90, 160)
-    else: # Alta Segregación / Bandada
+    else:
         prob_cluster = 0.88
         n_clusters = np.random.randint(1, 2)
         sigma_cluster = np.random.uniform(50, 100)
@@ -142,7 +156,6 @@ for i, min_item in enumerate(st.session_state.minerales, start=1):
     while px_acum < px_target and intentos < max_intentos:
         intentos += 1
 
-        # Muestreo espacial según heterogeneidad
         if np.random.rand() < prob_cluster:
             c_center = cluster_centers[np.random.randint(0, n_clusters)]
             cx = int(np.random.normal(c_center[0], sigma_cluster))
@@ -154,7 +167,7 @@ for i, min_item in enumerate(st.session_state.minerales, start=1):
 
         if textura_global == "Equigranular":
             factor_tam = np.random.uniform(0.8, 1.2)
-        else: # Inequigranular (Porfírica)
+        else:
             if np.random.rand() < 0.15:
                 factor_tam = np.random.uniform(2.2, 3.8)
             else:
